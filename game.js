@@ -102,10 +102,9 @@ class KittyGame {
         
         // Camera system
         this.camera = {
-            x: 0,
             y: 0,
             targetY: 0,
-            smoothness: 0.1
+            smoothing: 0.1
         };
         
         // Load high score
@@ -119,10 +118,11 @@ class KittyGame {
             height: 50,
             velocityY: 0,
             isJumping: false,
-            onPlatform: false,
             jumpPower: 18,
             gravity: 0.8,
             color: '#ff6b6b',
+            onGround: false,
+            onPlatform: false,
             // Collision box is smaller than visual size for better gameplay
             collisionBox: {
                 offsetX: 8,
@@ -210,15 +210,6 @@ class KittyGame {
     update() {
         if (this.gameState !== 'playing') return;
         
-        // Update camera to follow player vertically (only upward)
-        const playerScreenY = this.player.y - this.camera.y;
-        if (playerScreenY < this.canvas.height * 0.4) {
-            this.camera.targetY = this.player.y - this.canvas.height * 0.4;
-        }
-        
-        // Smooth camera movement
-        this.camera.y += (this.camera.targetY - this.camera.y) * this.camera.smoothness;
-        
         // Update trail
         this.updateTrail();
         
@@ -226,8 +217,8 @@ class KittyGame {
         this.player.velocityY += this.player.gravity;
         this.player.y += this.player.velocityY;
         
-        // Reset platform state
-        let wasOnPlatform = this.player.onPlatform;
+        // Reset ground/platform states
+        this.player.onGround = false;
         this.player.onPlatform = false;
         
         // Ground collision
@@ -235,23 +226,29 @@ class KittyGame {
             this.player.y = this.groundY - this.player.height;
             this.player.velocityY = 0;
             this.player.isJumping = false;
-            this.player.onPlatform = true;
+            this.player.onGround = true;
         }
         
-        // Platform collision detection - improved to prevent bouncing
+        // Platform collision detection - improved logic
         this.platforms.forEach(platform => {
             if (this.checkPlatformCollision(this.player, platform)) {
-                // Only land on platform if falling down onto it from above
-                if (this.player.velocityY > 0 && 
-                    this.player.y < platform.y && 
-                    this.player.y + this.player.height > platform.y - 10) {
+                // Check if player is falling onto platform from above
+                if (this.player.velocityY >= 0 && 
+                    this.player.y + this.player.height - 10 <= platform.y && 
+                    this.player.y + this.player.height >= platform.y) {
+                    
                     this.player.y = platform.y - this.player.height;
                     this.player.velocityY = 0;
                     this.player.isJumping = false;
                     this.player.onPlatform = true;
+                    this.player.onGround = false;
                 }
             }
         });
+        
+        // Update camera to follow player vertically
+        this.camera.targetY = Math.max(0, (this.groundY - this.player.y - 300));
+        this.camera.y += (this.camera.targetY - this.camera.y) * this.camera.smoothing;
         
         // Spawn obstacles
         this.obstacleSpawnTimer++;
@@ -260,7 +257,7 @@ class KittyGame {
             this.obstacleSpawnTimer = 0;
         }
         
-        // Spawn platforms - adjust for camera position
+        // Spawn platforms
         this.platformSpawnTimer++;
         if (this.platformSpawnTimer > 80) {
             this.spawnPlatform();
@@ -359,15 +356,20 @@ class KittyGame {
     }
     
     spawnPlatform() {
-        // Platforms spawn relative to camera position and get higher as score increases
-        const cameraGroundY = this.groundY - this.camera.y;
-        const baseHeight = cameraGroundY - 150;
-        const maxHeight = Math.max(50, baseHeight - (this.score * 2));
-        const platformY = Math.random() * (baseHeight - maxHeight) + maxHeight + this.camera.y;
+        // Platforms get higher as score increases - improved spawning
+        const baseHeight = this.groundY - 150;
+        const maxHeight = Math.max(50, baseHeight - (this.score * 3));
+        const platformY = Math.random() * (baseHeight - maxHeight) + maxHeight;
+        
+        // Sometimes spawn very high platforms for sky gameplay
+        let finalY = platformY;
+        if (Math.random() < 0.3 && this.score > 50) {
+            finalY = Math.random() * 300 + 100; // High sky platforms
+        }
         
         this.platforms.push({
             x: this.canvas.width,
-            y: platformY,
+            y: finalY,
             width: Math.random() * 100 + 80,
             height: 20,
             color: '#4CAF50'
@@ -377,15 +379,17 @@ class KittyGame {
     spawnCollectible() {
         let spawnY;
         
-        // Sometimes spawn on platforms, sometimes in air - adjust for camera
+        // Sometimes spawn on platforms, sometimes in air, sometimes very high
         if (this.platforms.length > 0 && Math.random() < 0.4) {
             // Spawn near a platform
             const platform = this.platforms[this.platforms.length - 1];
             spawnY = platform.y - 40;
+        } else if (Math.random() < 0.3 && this.score > 30) {
+            // Spawn very high for sky gameplay
+            spawnY = Math.random() * 200 + 50;
         } else {
-            // Spawn in air or on ground - relative to camera
-            const cameraGroundY = this.groundY - this.camera.y;
-            spawnY = cameraGroundY - Math.random() * 300 - 50 + this.camera.y;
+            // Spawn in air or on ground
+            spawnY = this.groundY - Math.random() * 200 - 50;
         }
         
         this.collectibles.push({
@@ -488,17 +492,17 @@ class KittyGame {
         
         // Save context for camera transform
         this.ctx.save();
-        this.ctx.translate(0, -this.camera.y);
+        this.ctx.translate(0, this.camera.y);
         
-        // Draw clouds - adjust for camera
+        // Draw clouds (adjusted for camera)
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         this.clouds.forEach(cloud => {
-            this.drawCloud(cloud.x, cloud.y + this.camera.y * 0.5, cloud.width, cloud.height);
+            this.drawCloud(cloud.x, cloud.y - this.camera.y * 0.5, cloud.width, cloud.height);
         });
         
         // Draw ground
         this.ctx.fillStyle = '#8bc34a';
-        this.ctx.fillRect(0, this.groundY, this.canvas.width, this.canvas.height - this.groundY + this.camera.y);
+        this.ctx.fillRect(0, this.groundY, this.canvas.width, this.canvas.height - this.groundY);
         
         // Draw ground details
         this.ctx.fillStyle = '#689f38';
