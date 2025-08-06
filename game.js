@@ -83,7 +83,7 @@ class KittyGame {
             height: 60,
             velocityY: 0,
             isJumping: false,
-            jumpPower: 15,
+            jumpPower: 18,
             gravity: 0.8,
             color: '#ff6b6b'
         };
@@ -214,9 +214,9 @@ class KittyGame {
     spawnObstacle() {
         this.obstacles.push({
             x: this.canvas.width,
-            y: this.groundY - 40,
-            width: 40,
-            height: 40,
+            y: this.groundY - 25,
+            width: 25,
+            height: 25,
             color: '#8b4513'
         });
     }
@@ -415,4 +415,3 @@ class KittyGame {
 window.addEventListener('load', () => {
     new KittyGame();
 });
-
