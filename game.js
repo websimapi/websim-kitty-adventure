@@ -441,11 +441,11 @@ class KittyGame {
     }
     
     ensurePlatformsAbove() {
-        // Reduced platform generation system - fewer platforms for better gameplay
+        // Platform generation system with altitude-based density
         const currentPlayerAltitude = this.groundY - this.player.y;
-        const platformInterval = 120; // Increased from 80 to 120 for fewer platforms
+        const platformInterval = 120;
         const horizontalSpread = 200;
-        const verticalRange = 400; // Reduced from 600 to 400
+        const verticalRange = 400;
         
         // Calculate altitude ranges to ensure platforms for
         const minAltitudeToEnsure = Math.max(0, currentPlayerAltitude - verticalRange);
@@ -454,6 +454,18 @@ class KittyGame {
         // Convert altitudes to Y coordinates
         const maxYToEnsure = this.groundY - minAltitudeToEnsure;
         const minYToEnsure = this.groundY - maxAltitudeToEnsure;
+        
+        // Helper function to calculate platform density based on altitude
+        const getPlatformDensity = (altitude) => {
+            // More platforms at lower altitudes, fewer at higher altitudes
+            if (altitude <= 200) return 3; // Very dense at low altitude
+            if (altitude <= 500) return 2; // Medium density
+            if (altitude <= 1000) return 1; // Sparse
+            if (altitude <= 2000) return Math.random() < 0.7 ? 1 : 0; // Very sparse, 70% chance
+            if (altitude <= 3000) return Math.random() < 0.5 ? 1 : 0; // 50% chance
+            if (altitude <= 4000) return Math.random() < 0.3 ? 1 : 0; // 30% chance
+            return Math.random() < 0.25 ? 1 : 0; // 25% chance at extreme heights
+        };
         
         // Generate platforms at regular intervals throughout the entire range
         for (let altitude = minAltitudeToEnsure; altitude <= maxAltitudeToEnsure; altitude += platformInterval) {
@@ -469,9 +481,12 @@ class KittyGame {
                 p.x < this.canvas.width + horizontalSpread
             );
             
-            // Generate fewer platforms - only 1 per level instead of 3
-            if (platformsAtThisLevel.length < 1) {
-                const platformsToGenerate = 1;
+            // Get density for this altitude
+            const targetPlatformCount = getPlatformDensity(altitude);
+            
+            // Generate platforms if we don't have enough
+            if (platformsAtThisLevel.length < targetPlatformCount) {
+                const platformsToGenerate = targetPlatformCount - platformsAtThisLevel.length;
                 
                 for (let i = 0; i < platformsToGenerate; i++) {
                     // Spread platforms horizontally with some randomness
@@ -489,13 +504,14 @@ class KittyGame {
             }
         }
         
-        // Generate fewer platforms ahead at player's level
+        // Generate platforms ahead at player's level and adjacent levels with altitude-based density
         const playerLevel = Math.floor(currentPlayerAltitude / platformInterval) * platformInterval;
         const playerLevelY = this.groundY - playerLevel;
         
         // Generate platforms ahead at player's level and adjacent levels
         for (let levelOffset = -1; levelOffset <= 1; levelOffset++) {
             const levelY = playerLevelY + (levelOffset * platformInterval);
+            const levelAltitude = this.groundY - levelY;
             if (levelY >= this.groundY - 50) continue;
             
             const platformsAtLevel = this.platforms.filter(p => 
@@ -504,8 +520,12 @@ class KittyGame {
                 p.x < this.canvas.width + 600
             );
             
-            if (platformsAtLevel.length < 2) { // Reduced from 3 to 2
-                for (let i = 0; i < 2; i++) { // Reduced from 4 to 2
+            // Get density for this altitude level
+            const targetPlatformCount = Math.max(1, getPlatformDensity(levelAltitude));
+            
+            if (platformsAtLevel.length < targetPlatformCount) {
+                const platformsToGenerate = targetPlatformCount - platformsAtLevel.length;
+                for (let i = 0; i < platformsToGenerate; i++) {
                     this.platforms.push({
                         x: this.canvas.width + (i * 150) + Math.random() * 150,
                         y: levelY + (Math.random() - 0.5) * 25,
@@ -524,20 +544,30 @@ class KittyGame {
     }
     
     spawnPlatform() {
-        // Reduced platform spawning frequency
+        // Altitude-based platform spawning system
         const currentAltitude = this.groundY - this.player.y;
         const baseAltitudes = [100, 200, 300, 500, 700, 1000, 1400, 1900, 2500, 3200, 4000, 5000];
         
-        // Generate platforms at fewer altitude levels
+        // Helper function to get platform spawn count based on altitude
+        const getSpawnCountForAltitude = (altitude) => {
+            if (altitude <= 200) return Math.floor(Math.random() * 3) + 2; // 2-4 platforms
+            if (altitude <= 500) return Math.floor(Math.random() * 2) + 2; // 2-3 platforms
+            if (altitude <= 1000) return Math.floor(Math.random() * 2) + 1; // 1-2 platforms
+            if (altitude <= 2000) return Math.random() < 0.8 ? 1 : 2; // 80% chance of 1, 20% chance of 2
+            if (altitude <= 3000) return Math.random() < 0.6 ? 1 : 0; // 60% chance of 1 platform
+            if (altitude <= 4000) return Math.random() < 0.4 ? 1 : 0; // 40% chance of 1 platform
+            return Math.random() < 0.25 ? 1 : 0; // 25% chance at extreme heights
+        };
+        
+        // Generate platforms at altitude levels with decreasing density
         const altitudesToGenerate = baseAltitudes.filter(alt => 
-            alt >= currentAltitude - 200 && alt <= currentAltitude + 400 // Reduced range
+            alt >= currentAltitude - 200 && alt <= currentAltitude + 400
         );
         
         // Ensure we always have at least a few levels to generate
-        if (altitudesToGenerate.length < 2) { // Reduced from 3 to 2
-            // Add more levels around current altitude
-            const currentLevel = Math.floor(currentAltitude / 120) * 120; // Changed to match new interval
-            for (let i = -1; i <= 2; i++) { // Reduced range
+        if (altitudesToGenerate.length < 2) {
+            const currentLevel = Math.floor(currentAltitude / 120) * 120;
+            for (let i = -1; i <= 2; i++) {
                 const level = currentLevel + (i * 120);
                 if (level > 50 && altitudesToGenerate.indexOf(level) === -1) {
                     altitudesToGenerate.push(level);
@@ -548,11 +578,12 @@ class KittyGame {
         altitudesToGenerate.forEach(altitude => {
             const platformY = this.groundY - altitude - Math.random() * 50;
             
-            // Generate only 1-2 platforms at each level instead of 2-4
-            const platformCount = Math.floor(Math.random() * 2) + 1;
+            // Get platform count based on altitude - fewer platforms at higher altitudes
+            const platformCount = getSpawnCountForAltitude(altitude);
+            
             for (let i = 0; i < platformCount; i++) {
                 this.platforms.push({
-                    x: this.canvas.width + Math.random() * 400 + (i * 150), // Increased spacing
+                    x: this.canvas.width + Math.random() * 400 + (i * 150),
                     y: platformY + (Math.random() - 0.5) * 40,
                     width: Math.random() * 100 + 90,
                     height: 20,
