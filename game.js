@@ -123,6 +123,10 @@ class KittyGame {
             color: '#ff6b6b',
             onGround: false,
             onPlatform: false,
+            // Special abilities from fish
+            speedBoost: 0,
+            doubleJump: false,
+            invincibility: 0,
             // Collision box is smaller than visual size for better gameplay
             collisionBox: {
                 offsetX: 8,
@@ -151,11 +155,15 @@ class KittyGame {
         this.platforms = [];
         this.particles = [];
         this.clouds = [];
+        this.monsters = [];
         
-        // Spawning
+        // Spawning and altitude tracking
         this.obstacleSpawnTimer = 0;
         this.collectibleSpawnTimer = 0;
         this.platformSpawnTimer = 0;
+        this.monsterSpawnTimer = 0;
+        this.highestPlatform = this.groundY - 150;
+        this.altitude = 0;
         
         this.initializeClouds();
     }
@@ -191,6 +199,11 @@ class KittyGame {
         if (!this.player.isJumping) {
             this.player.velocityY = -this.player.jumpPower;
             this.player.isJumping = true;
+        } else if (this.player.doubleJump && this.player.velocityY > -5) {
+            // Double jump ability from rainbow fish
+            this.player.velocityY = -this.player.jumpPower * 0.8;
+            this.player.doubleJump = false;
+            this.createParticles(this.player.x + this.player.width/2, this.player.y + this.player.height, '#ff00ff');
         }
     }
     
@@ -207,17 +220,64 @@ class KittyGame {
         }
     }
     
+    checkPlatformCollision(player, platform) {
+        const playerBox = {
+            x: player.x + (player.collisionBox?.offsetX || 0),
+            y: player.y + (player.collisionBox?.offsetY || 0),
+            width: player.collisionBox?.width || player.width,
+            height: player.collisionBox?.height || player.height
+        };
+        
+        return playerBox.x < platform.x + platform.width &&
+               playerBox.x + playerBox.width > platform.x &&
+               playerBox.y < platform.y + platform.height &&
+               playerBox.y + playerBox.height > platform.y;
+    }
+    
+    checkCollision(obj1, obj2) {
+        const box1 = {
+            x: obj1.x + (obj1.collisionBox?.offsetX || 0),
+            y: obj1.y + (obj1.collisionBox?.offsetY || 0),
+            width: obj1.collisionBox?.width || obj1.width,
+            height: obj1.collisionBox?.height || obj1.height
+        };
+        
+        const box2 = {
+            x: obj2.x + (obj2.collisionBox?.offsetX || 0),
+            y: obj2.y + (obj2.collisionBox?.offsetY || 0),
+            width: obj2.collisionBox?.width || obj2.width,
+            height: obj2.collisionBox?.height || obj2.height
+        };
+        
+        return box1.x < box2.x + box2.width &&
+               box1.x + box1.width > box2.x &&
+               box1.y < box2.y + box2.height &&
+               box1.y + box1.height > box2.y;
+    }
+    
     update() {
         if (this.gameState !== 'playing') return;
         
         // Update trail
         this.updateTrail();
         
+        // Calculate altitude based on how high above ground the player is
+        this.altitude = Math.max(0, this.groundY - this.player.y - this.player.height);
+        
+        // Update special abilities
+        if (this.player.speedBoost > 0) {
+            this.player.speedBoost--;
+            this.gameSpeed = Math.min(8, this.gameSpeed * 1.5);
+        }
+        if (this.player.invincibility > 0) {
+            this.player.invincibility--;
+        }
+        
         // Update player physics
         this.player.velocityY += this.player.gravity;
         this.player.y += this.player.velocityY;
         
-        // Reset ground/platform states
+        // Reset ground/platform states and double jump when landing
         this.player.onGround = false;
         this.player.onPlatform = false;
         
@@ -227,30 +287,23 @@ class KittyGame {
             this.player.velocityY = 0;
             this.player.isJumping = false;
             this.player.onGround = true;
+            this.player.doubleJump = false;
         }
         
-        // Platform collision detection - improved to prevent bouncing
+        // Platform collision detection
         this.platforms.forEach(platform => {
             if (this.checkPlatformCollision(this.player, platform)) {
-                // Check if player is falling onto platform from above and not already stable on it
-                if (this.player.velocityY > 0.5 && 
-                    this.player.y + this.player.height <= platform.y + 15 &&
-                    this.player.y + this.player.height >= platform.y - 5) {
+                if (this.player.velocityY >= 0 && 
+                    this.player.y < platform.y && 
+                    this.player.y + this.player.height > platform.y &&
+                    this.player.y + this.player.height < platform.y + platform.height + 10) {
                     
                     this.player.y = platform.y - this.player.height;
                     this.player.velocityY = 0;
                     this.player.isJumping = false;
                     this.player.onPlatform = true;
                     this.player.onGround = false;
-                } else if (this.player.velocityY <= 0.5 && 
-                          this.player.y + this.player.height <= platform.y + 5 &&
-                          this.player.y + this.player.height >= platform.y - 2) {
-                    // Player is stable on platform - just maintain position without bouncing
-                    this.player.onPlatform = true;
-                    this.player.onGround = false;
-                    if (this.player.velocityY > 0) {
-                        this.player.velocityY = 0;
-                    }
+                    this.player.doubleJump = false;
                 }
             }
         });
@@ -259,6 +312,9 @@ class KittyGame {
         this.camera.targetY = Math.max(0, (this.groundY - this.player.y - 300));
         this.camera.y += (this.camera.targetY - this.camera.y) * this.camera.smoothing;
         
+        // Infinite platform generation
+        this.ensurePlatformsAbove();
+        
         // Spawn obstacles
         this.obstacleSpawnTimer++;
         if (this.obstacleSpawnTimer > 120 - this.gameSpeed * 5) {
@@ -266,11 +322,18 @@ class KittyGame {
             this.obstacleSpawnTimer = 0;
         }
         
-        // Spawn platforms
+        // Spawn platforms (reduced frequency since we have infinite generation)
         this.platformSpawnTimer++;
-        if (this.platformSpawnTimer > 80) {
+        if (this.platformSpawnTimer > 100) {
             this.spawnPlatform();
             this.platformSpawnTimer = 0;
+        }
+        
+        // Spawn monsters on platforms
+        this.monsterSpawnTimer++;
+        if (this.monsterSpawnTimer > 150) {
+            this.spawnMonster();
+            this.monsterSpawnTimer = 0;
         }
         
         // Spawn collectibles
@@ -284,13 +347,33 @@ class KittyGame {
         this.obstacles = this.obstacles.filter(obstacle => {
             obstacle.x -= this.gameSpeed;
             
-            // Collision detection
-            if (this.checkCollision(this.player, obstacle)) {
+            if (this.player.invincibility <= 0 && this.checkCollision(this.player, obstacle)) {
                 this.takeDamage();
                 return false;
             }
             
             return obstacle.x > -obstacle.width;
+        });
+        
+        // Update monsters
+        this.monsters = this.monsters.filter(monster => {
+            monster.x -= this.gameSpeed;
+            
+            if (monster.platform) {
+                monster.localX += monster.direction * monster.speed;
+                if (monster.localX <= 0 || monster.localX >= monster.platform.width - monster.width) {
+                    monster.direction *= -1;
+                }
+                monster.x = monster.platform.x + monster.localX;
+            }
+            
+            if (this.player.invincibility <= 0 && this.checkCollision(this.player, monster)) {
+                this.takeDamage();
+                this.createParticles(monster.x + monster.width/2, monster.y + monster.height/2, '#ff0000');
+                return false;
+            }
+            
+            return monster.x > -monster.width;
         });
         
         // Update platforms
@@ -303,10 +386,9 @@ class KittyGame {
         this.collectibles = this.collectibles.filter(collectible => {
             collectible.x -= this.gameSpeed;
             
-            // Collection detection
             if (this.checkCollision(this.player, collectible)) {
-                this.collectItem();
-                this.createParticles(collectible.x + collectible.width/2, collectible.y + collectible.height/2);
+                this.collectSpecialFish(collectible);
+                this.createParticles(collectible.x + collectible.width/2, collectible.y + collectible.height/2, collectible.color);
                 return false;
             }
             
@@ -332,20 +414,6 @@ class KittyGame {
         
         // Increase difficulty
         this.gameSpeed += 0.001;
-    }
-    
-    checkPlatformCollision(player, platform) {
-        const playerBox = {
-            x: player.x + (player.collisionBox?.offsetX || 0),
-            y: player.y + (player.collisionBox?.offsetY || 0),
-            width: player.collisionBox?.width || player.width,
-            height: player.collisionBox?.height || player.height
-        };
-        
-        return playerBox.x < platform.x + platform.width &&
-               playerBox.x + playerBox.width > platform.x &&
-               playerBox.y < platform.y + platform.height &&
-               playerBox.y + playerBox.height > platform.y;
     }
     
     spawnObstacle() {
@@ -385,6 +453,78 @@ class KittyGame {
         });
     }
     
+    spawnMonster() {
+        // Only spawn monsters on existing platforms that are on screen
+        const availablePlatforms = this.platforms.filter(p => 
+            p.x > this.canvas.width * 0.8 && p.x < this.canvas.width * 1.5
+        );
+        
+        if (availablePlatforms.length === 0) return;
+        
+        const platform = availablePlatforms[Math.floor(Math.random() * availablePlatforms.length)];
+        const altitude = this.groundY - platform.y;
+        
+        // Different monster types based on altitude
+        let monsterType = 'basic';
+        let color = '#8B0000';
+        let speed = 1;
+        
+        if (altitude > 600) {
+            monsterType = 'flying';
+            color = '#4B0082';
+            speed = 2;
+        } else if (altitude > 300) {
+            monsterType = 'jumper';
+            color = '#FF4500';
+            speed = 1.5;
+        }
+        
+        this.monsters.push({
+            x: platform.x,
+            y: platform.y - 25,
+            width: 25,
+            height: 25,
+            color: color,
+            type: monsterType,
+            platform: platform,
+            localX: 0,
+            direction: Math.random() < 0.5 ? 1 : -1,
+            speed: speed,
+            collisionBox: {
+                offsetX: 3,
+                offsetY: 3,
+                width: 19,
+                height: 19
+            }
+        });
+    }
+    
+    ensurePlatformsAbove() {
+        // Keep spawning platforms above the player to create infinite progression
+        const playerTopY = this.player.y - 400; // Look ahead of player
+        if (this.highestPlatform > playerTopY) {
+            // Spawn a new platform above
+            const newPlatformY = this.highestPlatform - Math.random() * 150 - 100;
+            this.platforms.push({
+                x: this.canvas.width + Math.random() * 200,
+                y: newPlatformY,
+                width: Math.random() * 100 + 80,
+                height: 20,
+                color: this.getPlatformColor(newPlatformY)
+            });
+            this.highestPlatform = newPlatformY;
+        }
+    }
+    
+    getPlatformColor(y) {
+        const altitude = this.groundY - y;
+        if (altitude > 800) return '#9C27B0'; // Purple for very high
+        if (altitude > 600) return '#3F51B5'; // Indigo for high
+        if (altitude > 400) return '#2196F3'; // Blue for medium-high
+        if (altitude > 200) return '#4CAF50'; // Green for medium
+        return '#8BC34A'; // Light green for low
+    }
+    
     spawnCollectible() {
         let spawnY;
         
@@ -401,12 +541,19 @@ class KittyGame {
             spawnY = this.groundY - Math.random() * 200 - 50;
         }
         
+        // Determine fish type based on altitude
+        const altitude = this.groundY - spawnY;
+        let fishType = this.getFishType(altitude);
+        
         this.collectibles.push({
             x: this.canvas.width,
             y: spawnY,
             width: 35,
             height: 25,
-            color: '#4ecdc4',
+            color: fishType.color,
+            type: fishType.type,
+            points: fishType.points,
+            ability: fishType.ability,
             collisionBox: {
                 offsetX: 3,
                 offsetY: 3,
@@ -416,39 +563,54 @@ class KittyGame {
         });
     }
     
-    checkCollision(obj1, obj2) {
-        // Use collision boxes for more precise detection
-        const box1 = {
-            x: obj1.x + (obj1.collisionBox?.offsetX || 0),
-            y: obj1.y + (obj1.collisionBox?.offsetY || 0),
-            width: obj1.collisionBox?.width || obj1.width,
-            height: obj1.collisionBox?.height || obj1.height
-        };
-        
-        const box2 = {
-            x: obj2.x + (obj2.collisionBox?.offsetX || 0),
-            y: obj2.y + (obj2.collisionBox?.offsetY || 0),
-            width: obj2.collisionBox?.width || obj2.width,
-            height: obj2.collisionBox?.height || obj2.height
-        };
-        
-        return box1.x < box2.x + box2.width &&
-               box1.x + box1.width > box2.x &&
-               box1.y < box2.y + box2.height &&
-               box1.y + box1.height > box2.y;
-    }
-    
-    takeDamage() {
-        this.lives--;
-        this.updateUI();
-        
-        if (this.lives <= 0) {
-            this.gameOver();
+    getFishType(altitude) {
+        if (altitude > 800) {
+            return {
+                type: 'diamond',
+                color: '#E1F5FE',
+                points: 100,
+                ability: 'invincibility'
+            };
+        } else if (altitude > 600) {
+            return {
+                type: 'rainbow',
+                color: '#FF6B6B',
+                points: 50,
+                ability: 'doubleJump'
+            };
+        } else if (altitude > 300) {
+            return {
+                type: 'golden',
+                color: '#FFD700',
+                points: 25,
+                ability: 'speedBoost'
+            };
+        } else {
+            return {
+                type: 'regular',
+                color: '#4ecdc4',
+                points: 10,
+                ability: 'none'
+            };
         }
     }
     
-    collectItem() {
-        this.score += 10;
+    collectSpecialFish(fish) {
+        this.score += fish.points;
+        
+        // Apply special abilities
+        switch (fish.ability) {
+            case 'speedBoost':
+                this.player.speedBoost = 300; // 5 seconds at 60fps
+                break;
+            case 'doubleJump':
+                this.player.doubleJump = true;
+                break;
+            case 'invincibility':
+                this.player.invincibility = 600; // 10 seconds at 60fps
+                break;
+        }
+        
         this.updateUI();
         
         // Update high score
@@ -458,7 +620,7 @@ class KittyGame {
         }
     }
     
-    createParticles(x, y) {
+    createParticles(x, y, color = '#4ecdc4') {
         for (let i = 0; i < 8; i++) {
             this.particles.push({
                 x: x,
@@ -466,7 +628,7 @@ class KittyGame {
                 vx: (Math.random() - 0.5) * 6,
                 vy: (Math.random() - 0.5) * 6,
                 life: 30,
-                color: '#4ecdc4'
+                color: color
             });
         }
     }
@@ -480,6 +642,7 @@ class KittyGame {
     updateUI() {
         document.getElementById('score').textContent = this.score;
         document.getElementById('highScore').textContent = this.highScore;
+        document.getElementById('altitude').textContent = Math.floor(this.altitude) + 'm';
         
         const hearts = document.querySelectorAll('.heart');
         hearts.forEach((heart, index) => {
@@ -525,20 +688,29 @@ class KittyGame {
             
             // Draw platforms
             this.platforms.forEach(platform => {
-                this.drawPlatform(platform.x, platform.y, platform.width, platform.height);
+                this.drawPlatform(platform.x, platform.y, platform.width, platform.height, platform.color);
             });
             
-            // Draw player (kitty)
+            // Draw monsters
+            this.monsters.forEach(monster => {
+                this.drawMonster(monster);
+            });
+            
+            // Draw player (kitty) with invincibility effect
+            if (this.player.invincibility > 0 && Math.floor(this.player.invincibility / 5) % 2 === 0) {
+                this.ctx.globalAlpha = 0.5;
+            }
             this.drawKitty(this.player.x, this.player.y, this.player.width, this.player.height);
+            this.ctx.globalAlpha = 1;
             
             // Draw obstacles
             this.obstacles.forEach(obstacle => {
                 this.drawObstacle(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
             });
             
-            // Draw collectibles (fish)
+            // Draw collectibles (special fish)
             this.collectibles.forEach(collectible => {
-                this.drawFish(collectible.x, collectible.y, collectible.width, collectible.height);
+                this.drawSpecialFish(collectible);
             });
             
             // Draw particles
@@ -647,23 +819,119 @@ class KittyGame {
         this.ctx.globalAlpha = 1;
     }
     
-    drawPlatform(x, y, width, height) {
+    drawPlatform(x, y, width, height, color = '#4CAF50') {
         // Platform base
-        this.ctx.fillStyle = '#4CAF50';
+        this.ctx.fillStyle = color;
         this.ctx.fillRect(x, y, width, height);
         
         // Platform edge highlight
-        this.ctx.fillStyle = '#81C784';
+        this.ctx.fillStyle = this.lightenColor(color, 0.3);
         this.ctx.fillRect(x, y, width, 4);
         
         // Platform shadow
-        this.ctx.fillStyle = '#2E7D32';
+        this.ctx.fillStyle = this.darkenColor(color, 0.3);
         this.ctx.fillRect(x, y + height - 4, width, 4);
         
         // Platform decorations
-        this.ctx.fillStyle = '#66BB6A';
+        this.ctx.fillStyle = this.lightenColor(color, 0.1);
         for (let i = 0; i < width; i += 15) {
             this.ctx.fillRect(x + i, y + 2, 3, height - 4);
+        }
+    }
+    
+    drawSpecialFish(fish) {
+        if (this.imagesReady && this.images.fish) {
+            // Tint the fish image based on type
+            if (fish.type !== 'regular') {
+                this.ctx.save();
+                this.ctx.globalCompositeOperation = 'multiply';
+                this.ctx.fillStyle = fish.color;
+                this.ctx.fillRect(fish.x, fish.y, fish.width, fish.height);
+                this.ctx.globalCompositeOperation = 'destination-atop';
+                this.ctx.drawImage(this.images.fish, fish.x, fish.y, fish.width, fish.height);
+                this.ctx.restore();
+            } else {
+                this.ctx.drawImage(this.images.fish, fish.x, fish.y, fish.width, fish.height);
+            }
+            
+            // Special effects for different fish types
+            if (fish.type === 'rainbow') {
+                this.ctx.strokeStyle = '#FF6B6B';
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(fish.x - 2, fish.y - 2, fish.width + 4, fish.height + 4);
+            } else if (fish.type === 'diamond') {
+                this.ctx.fillStyle = '#FFFFFF';
+                this.ctx.globalAlpha = 0.7;
+                this.ctx.fillRect(fish.x + fish.width/4, fish.y + fish.height/4, fish.width/2, fish.height/2);
+                this.ctx.globalAlpha = 1;
+            }
+        } else {
+            // Fallback drawing
+            this.ctx.fillStyle = fish.color;
+            this.ctx.fillRect(fish.x + 5, fish.y + 5, fish.width - 10, fish.height - 10);
+            this.ctx.fillStyle = '#fff';
+            this.ctx.fillRect(fish.x + 2, fish.y + 8, 3, 3);
+        }
+    }
+    
+    drawMonster(monster) {
+        // Monster body
+        this.ctx.fillStyle = monster.color;
+        this.ctx.fillRect(monster.x, monster.y, monster.width, monster.height);
+        
+        // Monster details based on type
+        if (monster.type === 'flying') {
+            // Wings
+            this.ctx.fillStyle = '#301934';
+            this.ctx.fillRect(monster.x - 5, monster.y + 5, 8, 15);
+            this.ctx.fillRect(monster.x + monster.width - 3, monster.y + 5, 8, 15);
+        } else if (monster.type === 'jumper') {
+            // Spikes
+            this.ctx.fillStyle = '#8B0000';
+            for (let i = 0; i < monster.width; i += 5) {
+                this.ctx.fillRect(monster.x + i, monster.y - 3, 3, 6);
+            }
+        }
+        
+        // Eyes
+        this.ctx.fillStyle = '#ff0000';
+        this.ctx.fillRect(monster.x + 5, monster.y + 5, 4, 4);
+        this.ctx.fillRect(monster.x + monster.width - 9, monster.y + 5, 4, 4);
+    }
+    
+    lightenColor(color, amount) {
+        const num = parseInt(color.replace("#", ""), 16);
+        const r = Math.min(255, Math.floor((num >> 16) + 255 * amount));
+        const g = Math.min(255, Math.floor((num >> 8 & 0x00FF) + 255 * amount));
+        const b = Math.min(255, Math.floor((num & 0x0000FF) + 255 * amount));
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+    
+    darkenColor(color, amount) {
+        const num = parseInt(color.replace("#", ""), 16);
+        const r = Math.max(0, Math.floor((num >> 16) - 255 * amount));
+        const g = Math.max(0, Math.floor((num >> 8 & 0x00FF) - 255 * amount));
+        const b = Math.max(0, Math.floor((num & 0x0000FF) - 255 * amount));
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+    
+    takeDamage() {
+        this.lives--;
+        this.updateUI();
+        
+        if (this.lives <= 0) {
+            this.gameOver();
+        }
+    }
+    
+    collectItem() {
+        this.score += 10;
+        this.updateUI();
+        
+        // Update high score
+        if (this.score > this.highScore) {
+            this.highScore = this.score;
+            localStorage.setItem('kittyGameHighScore', this.highScore.toString());
         }
     }
     
