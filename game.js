@@ -6,12 +6,37 @@ class KittyGame {
         this.gameOverScreen = document.getElementById('gameOverScreen');
         this.mobileControls = document.getElementById('mobileControls');
         
+        // Load images
+        this.images = {};
+        this.imagesLoaded = 0;
+        this.totalImages = 2;
+        
+        this.loadImages();
         this.setupCanvas();
         this.setupEventListeners();
         this.setupGame();
         this.detectMobile();
         
         this.gameLoop = this.gameLoop.bind(this);
+    }
+    
+    loadImages() {
+        const imageList = [
+            { name: 'kitty', src: 'kitty.png' },
+            { name: 'fish', src: 'fish.png' }
+        ];
+        
+        imageList.forEach(imageInfo => {
+            const img = new Image();
+            img.onload = () => {
+                this.imagesLoaded++;
+                if (this.imagesLoaded === this.totalImages) {
+                    this.imagesReady = true;
+                }
+            };
+            img.src = imageInfo.src;
+            this.images[imageInfo.name] = img;
+        });
     }
     
     detectMobile() {
@@ -75,17 +100,27 @@ class KittyGame {
         this.gameSpeed = 3;
         this.groundY = 0;
         
-        // Player (kitty)
+        // Load high score
+        this.highScore = parseInt(localStorage.getItem('kittyGameHighScore') || '0');
+        
+        // Player (kitty) - adjusted size and collision box
         this.player = {
             x: 100,
             y: 0,
-            width: 60,
-            height: 60,
+            width: 50,
+            height: 50,
             velocityY: 0,
             isJumping: false,
             jumpPower: 18,
             gravity: 0.8,
-            color: '#ff6b6b'
+            color: '#ff6b6b',
+            // Collision box is smaller than visual size for better gameplay
+            collisionBox: {
+                offsetX: 8,
+                offsetY: 8,
+                width: 34,
+                height: 34
+            }
         };
         
         // Game objects
@@ -214,10 +249,16 @@ class KittyGame {
     spawnObstacle() {
         this.obstacles.push({
             x: this.canvas.width,
-            y: this.groundY - 25,
-            width: 25,
-            height: 25,
-            color: '#8b4513'
+            y: this.groundY - 20,
+            width: 20,
+            height: 20,
+            color: '#8b4513',
+            collisionBox: {
+                offsetX: 2,
+                offsetY: 2,
+                width: 16,
+                height: 16
+            }
         });
     }
     
@@ -225,17 +266,38 @@ class KittyGame {
         this.collectibles.push({
             x: this.canvas.width,
             y: this.groundY - Math.random() * 150 - 50,
-            width: 30,
-            height: 20,
-            color: '#4ecdc4'
+            width: 35,
+            height: 25,
+            color: '#4ecdc4',
+            collisionBox: {
+                offsetX: 3,
+                offsetY: 3,
+                width: 29,
+                height: 19
+            }
         });
     }
     
-    checkCollision(rect1, rect2) {
-        return rect1.x < rect2.x + rect2.width &&
-               rect1.x + rect1.width > rect2.x &&
-               rect1.y < rect2.y + rect2.height &&
-               rect1.y + rect1.height > rect2.y;
+    checkCollision(obj1, obj2) {
+        // Use collision boxes for more precise detection
+        const box1 = {
+            x: obj1.x + (obj1.collisionBox?.offsetX || 0),
+            y: obj1.y + (obj1.collisionBox?.offsetY || 0),
+            width: obj1.collisionBox?.width || obj1.width,
+            height: obj1.collisionBox?.height || obj1.height
+        };
+        
+        const box2 = {
+            x: obj2.x + (obj2.collisionBox?.offsetX || 0),
+            y: obj2.y + (obj2.collisionBox?.offsetY || 0),
+            width: obj2.collisionBox?.width || obj2.width,
+            height: obj2.collisionBox?.height || obj2.height
+        };
+        
+        return box1.x < box2.x + box2.width &&
+               box1.x + box1.width > box2.x &&
+               box1.y < box2.y + box2.height &&
+               box1.y + box1.height > box2.y;
     }
     
     takeDamage() {
@@ -250,6 +312,12 @@ class KittyGame {
     collectItem() {
         this.score += 10;
         this.updateUI();
+        
+        // Update high score
+        if (this.score > this.highScore) {
+            this.highScore = this.score;
+            localStorage.setItem('kittyGameHighScore', this.highScore.toString());
+        }
     }
     
     createParticles(x, y) {
@@ -273,6 +341,7 @@ class KittyGame {
     
     updateUI() {
         document.getElementById('score').textContent = this.score;
+        document.getElementById('highScore').textContent = this.highScore;
         
         const hearts = document.querySelectorAll('.heart');
         hearts.forEach((heart, index) => {
@@ -333,33 +402,38 @@ class KittyGame {
     }
     
     drawKitty(x, y, width, height) {
-        // Body
-        this.ctx.fillStyle = '#ff6b6b';
-        this.ctx.fillRect(x + 10, y + 20, width - 20, height - 20);
-        
-        // Head
-        this.ctx.fillStyle = '#ff6b6b';
-        this.ctx.fillRect(x + 5, y + 5, width - 10, 25);
-        
-        // Ears
-        this.ctx.fillStyle = '#ff5252';
-        this.ctx.fillRect(x + 8, y, 12, 15);
-        this.ctx.fillRect(x + width - 20, y, 12, 15);
-        
-        // Eyes
-        this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(x + 15, y + 10, 6, 6);
-        this.ctx.fillRect(x + width - 21, y + 10, 6, 6);
-        
-        // Eyes shine
-        this.ctx.fillStyle = '#fff';
-        this.ctx.fillRect(x + 17, y + 11, 2, 2);
-        this.ctx.fillStyle = '#fff';
-        this.ctx.fillRect(x + width - 19, y + 11, 2, 2);
-        
-        // Tail
-        this.ctx.fillStyle = '#ff5252';
-        this.ctx.fillRect(x - 15, y + 15, 20, 8);
+        if (this.imagesReady && this.images.kitty) {
+            this.ctx.drawImage(this.images.kitty, x, y, width, height);
+        } else {
+            // Fallback to original drawing if image not loaded
+            // Body
+            this.ctx.fillStyle = '#ff6b6b';
+            this.ctx.fillRect(x + 10, y + 20, width - 20, height - 20);
+            
+            // Head
+            this.ctx.fillStyle = '#ff6b6b';
+            this.ctx.fillRect(x + 5, y + 5, width - 10, 25);
+            
+            // Ears
+            this.ctx.fillStyle = '#ff5252';
+            this.ctx.fillRect(x + 8, y, 12, 15);
+            this.ctx.fillRect(x + width - 20, y, 12, 15);
+            
+            // Eyes
+            this.ctx.fillStyle = '#000';
+            this.ctx.fillRect(x + 15, y + 10, 6, 6);
+            this.ctx.fillRect(x + width - 21, y + 10, 6, 6);
+            
+            // Eyes shine
+            this.ctx.fillStyle = '#fff';
+            this.ctx.fillRect(x + 17, y + 11, 2, 2);
+            this.ctx.fillStyle = '#fff';
+            this.ctx.fillRect(x + width - 19, y + 11, 2, 2);
+            
+            // Tail
+            this.ctx.fillStyle = '#ff5252';
+            this.ctx.fillRect(x - 15, y + 15, 20, 8);
+        }
     }
     
     drawObstacle(x, y, width, height) {
@@ -375,21 +449,26 @@ class KittyGame {
     }
     
     drawFish(x, y, width, height) {
-        // Fish body
-        this.ctx.fillStyle = '#4ecdc4';
-        this.ctx.fillRect(x + 5, y + 5, width - 10, height - 10);
-        
-        // Fish head
-        this.ctx.fillStyle = '#26a69a';
-        this.ctx.fillRect(x, y + 7, 8, height - 14);
-        
-        // Fish tail
-        this.ctx.fillStyle = '#26a69a';
-        this.ctx.fillRect(x + width - 8, y, 8, height);
-        
-        // Fish eye
-        this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(x + 2, y + 8, 3, 3);
+        if (this.imagesReady && this.images.fish) {
+            this.ctx.drawImage(this.images.fish, x, y, width, height);
+        } else {
+            // Fallback to original drawing if image not loaded
+            // Fish body
+            this.ctx.fillStyle = '#4ecdc4';
+            this.ctx.fillRect(x + 5, y + 5, width - 10, height - 10);
+            
+            // Fish head
+            this.ctx.fillStyle = '#26a69a';
+            this.ctx.fillRect(x, y + 7, 8, height - 14);
+            
+            // Fish tail
+            this.ctx.fillStyle = '#26a69a';
+            this.ctx.fillRect(x + width - 8, y, 8, height);
+            
+            // Fish eye
+            this.ctx.fillStyle = '#000';
+            this.ctx.fillRect(x + 2, y + 8, 3, 3);
+        }
     }
     
     drawCloud(x, y, width, height) {
