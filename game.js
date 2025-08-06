@@ -100,6 +100,14 @@ class KittyGame {
         this.gameSpeed = 3;
         this.groundY = 0;
         
+        // Camera system
+        this.camera = {
+            x: 0,
+            y: 0,
+            targetY: 0,
+            smoothness: 0.1
+        };
+        
         // Load high score
         this.highScore = parseInt(localStorage.getItem('kittyGameHighScore') || '0');
         
@@ -111,6 +119,7 @@ class KittyGame {
             height: 50,
             velocityY: 0,
             isJumping: false,
+            onPlatform: false,
             jumpPower: 18,
             gravity: 0.8,
             color: '#ff6b6b',
@@ -123,15 +132,30 @@ class KittyGame {
             }
         };
         
+        // Rainbow trail system
+        this.trail = [];
+        this.maxTrailLength = 15;
+        this.trailColors = [
+            '#ff0000', // red
+            '#ff7f00', // orange
+            '#ffff00', // yellow
+            '#00ff00', // green
+            '#0000ff', // blue
+            '#4b0082', // indigo
+            '#9400d3'  // violet
+        ];
+        
         // Game objects
         this.obstacles = [];
         this.collectibles = [];
+        this.platforms = [];
         this.particles = [];
         this.clouds = [];
         
         // Spawning
         this.obstacleSpawnTimer = 0;
         this.collectibleSpawnTimer = 0;
+        this.platformSpawnTimer = 0;
         
         this.initializeClouds();
     }
@@ -170,25 +194,77 @@ class KittyGame {
         }
     }
     
+    updateTrail() {
+        // Add current position to trail
+        this.trail.unshift({
+            x: this.player.x + this.player.width / 2,
+            y: this.player.y + this.player.height / 2
+        });
+        
+        // Limit trail length
+        if (this.trail.length > this.maxTrailLength) {
+            this.trail.pop();
+        }
+    }
+    
     update() {
         if (this.gameState !== 'playing') return;
+        
+        // Update camera to follow player vertically (only upward)
+        const playerScreenY = this.player.y - this.camera.y;
+        if (playerScreenY < this.canvas.height * 0.4) {
+            this.camera.targetY = this.player.y - this.canvas.height * 0.4;
+        }
+        
+        // Smooth camera movement
+        this.camera.y += (this.camera.targetY - this.camera.y) * this.camera.smoothness;
+        
+        // Update trail
+        this.updateTrail();
         
         // Update player physics
         this.player.velocityY += this.player.gravity;
         this.player.y += this.player.velocityY;
+        
+        // Reset platform state
+        let wasOnPlatform = this.player.onPlatform;
+        this.player.onPlatform = false;
         
         // Ground collision
         if (this.player.y >= this.groundY - this.player.height) {
             this.player.y = this.groundY - this.player.height;
             this.player.velocityY = 0;
             this.player.isJumping = false;
+            this.player.onPlatform = true;
         }
+        
+        // Platform collision detection - improved to prevent bouncing
+        this.platforms.forEach(platform => {
+            if (this.checkPlatformCollision(this.player, platform)) {
+                // Only land on platform if falling down onto it from above
+                if (this.player.velocityY > 0 && 
+                    this.player.y < platform.y && 
+                    this.player.y + this.player.height > platform.y - 10) {
+                    this.player.y = platform.y - this.player.height;
+                    this.player.velocityY = 0;
+                    this.player.isJumping = false;
+                    this.player.onPlatform = true;
+                }
+            }
+        });
         
         // Spawn obstacles
         this.obstacleSpawnTimer++;
         if (this.obstacleSpawnTimer > 120 - this.gameSpeed * 5) {
             this.spawnObstacle();
             this.obstacleSpawnTimer = 0;
+        }
+        
+        // Spawn platforms - adjust for camera position
+        this.platformSpawnTimer++;
+        if (this.platformSpawnTimer > 80) {
+            this.spawnPlatform();
+            this.platformSpawnTimer = 0;
         }
         
         // Spawn collectibles
@@ -209,6 +285,12 @@ class KittyGame {
             }
             
             return obstacle.x > -obstacle.width;
+        });
+        
+        // Update platforms
+        this.platforms = this.platforms.filter(platform => {
+            platform.x -= this.gameSpeed;
+            return platform.x > -platform.width;
         });
         
         // Update collectibles
@@ -246,6 +328,20 @@ class KittyGame {
         this.gameSpeed += 0.001;
     }
     
+    checkPlatformCollision(player, platform) {
+        const playerBox = {
+            x: player.x + (player.collisionBox?.offsetX || 0),
+            y: player.y + (player.collisionBox?.offsetY || 0),
+            width: player.collisionBox?.width || player.width,
+            height: player.collisionBox?.height || player.height
+        };
+        
+        return playerBox.x < platform.x + platform.width &&
+               playerBox.x + playerBox.width > platform.x &&
+               playerBox.y < platform.y + platform.height &&
+               playerBox.y + playerBox.height > platform.y;
+    }
+    
     spawnObstacle() {
         this.obstacles.push({
             x: this.canvas.width,
@@ -262,10 +358,39 @@ class KittyGame {
         });
     }
     
+    spawnPlatform() {
+        // Platforms spawn relative to camera position and get higher as score increases
+        const cameraGroundY = this.groundY - this.camera.y;
+        const baseHeight = cameraGroundY - 150;
+        const maxHeight = Math.max(50, baseHeight - (this.score * 2));
+        const platformY = Math.random() * (baseHeight - maxHeight) + maxHeight + this.camera.y;
+        
+        this.platforms.push({
+            x: this.canvas.width,
+            y: platformY,
+            width: Math.random() * 100 + 80,
+            height: 20,
+            color: '#4CAF50'
+        });
+    }
+    
     spawnCollectible() {
+        let spawnY;
+        
+        // Sometimes spawn on platforms, sometimes in air - adjust for camera
+        if (this.platforms.length > 0 && Math.random() < 0.4) {
+            // Spawn near a platform
+            const platform = this.platforms[this.platforms.length - 1];
+            spawnY = platform.y - 40;
+        } else {
+            // Spawn in air or on ground - relative to camera
+            const cameraGroundY = this.groundY - this.camera.y;
+            spawnY = cameraGroundY - Math.random() * 300 - 50 + this.camera.y;
+        }
+        
         this.collectibles.push({
             x: this.canvas.width,
-            y: this.groundY - Math.random() * 150 - 50,
+            y: spawnY,
             width: 35,
             height: 25,
             color: '#4ecdc4',
@@ -361,15 +486,19 @@ class KittyGame {
         this.ctx.fillStyle = gradient;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // Draw clouds
+        // Save context for camera transform
+        this.ctx.save();
+        this.ctx.translate(0, -this.camera.y);
+        
+        // Draw clouds - adjust for camera
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         this.clouds.forEach(cloud => {
-            this.drawCloud(cloud.x, cloud.y, cloud.width, cloud.height);
+            this.drawCloud(cloud.x, cloud.y + this.camera.y * 0.5, cloud.width, cloud.height);
         });
         
         // Draw ground
         this.ctx.fillStyle = '#8bc34a';
-        this.ctx.fillRect(0, this.groundY, this.canvas.width, this.canvas.height - this.groundY);
+        this.ctx.fillRect(0, this.groundY, this.canvas.width, this.canvas.height - this.groundY + this.camera.y);
         
         // Draw ground details
         this.ctx.fillStyle = '#689f38';
@@ -378,6 +507,14 @@ class KittyGame {
         }
         
         if (this.gameState === 'playing') {
+            // Draw rainbow trail
+            this.drawTrail();
+            
+            // Draw platforms
+            this.platforms.forEach(platform => {
+                this.drawPlatform(platform.x, platform.y, platform.width, platform.height);
+            });
+            
             // Draw player (kitty)
             this.drawKitty(this.player.x, this.player.y, this.player.width, this.player.height);
             
@@ -399,6 +536,9 @@ class KittyGame {
                 this.ctx.globalAlpha = 1;
             });
         }
+        
+        // Restore context
+        this.ctx.restore();
     }
     
     drawKitty(x, y, width, height) {
@@ -479,6 +619,39 @@ class KittyGame {
         this.ctx.fillRect(x + width/4, y - height/4, width/4, height/2);
         this.ctx.fillRect(x + width/2, y - height/3, width/3, height/2);
         this.ctx.fillRect(x + 3*width/4, y - height/5, width/4, height/2);
+    }
+    
+    drawTrail() {
+        this.trail.forEach((point, index) => {
+            const opacity = (this.maxTrailLength - index) / this.maxTrailLength;
+            const colorIndex = index % this.trailColors.length;
+            const size = 8 - (index * 0.4);
+            
+            this.ctx.fillStyle = this.trailColors[colorIndex];
+            this.ctx.globalAlpha = opacity * 0.7;
+            this.ctx.fillRect(point.x - size/2, point.y - size/2, size, size);
+        });
+        this.ctx.globalAlpha = 1;
+    }
+    
+    drawPlatform(x, y, width, height) {
+        // Platform base
+        this.ctx.fillStyle = '#4CAF50';
+        this.ctx.fillRect(x, y, width, height);
+        
+        // Platform edge highlight
+        this.ctx.fillStyle = '#81C784';
+        this.ctx.fillRect(x, y, width, 4);
+        
+        // Platform shadow
+        this.ctx.fillStyle = '#2E7D32';
+        this.ctx.fillRect(x, y + height - 4, width, 4);
+        
+        // Platform decorations
+        this.ctx.fillStyle = '#66BB6A';
+        for (let i = 0; i < width; i += 15) {
+            this.ctx.fillRect(x + i, y + 2, 3, height - 4);
+        }
     }
     
     gameLoop() {
