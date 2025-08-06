@@ -277,11 +277,11 @@ class KittyGame {
         this.player.velocityY += this.player.gravity;
         this.player.y += this.player.velocityY;
         
-        // Reset ground/platform states and double jump when landing
+        // Reset platform collision state
         this.player.onGround = false;
         this.player.onPlatform = false;
         
-        // Ground collision
+        // Ground collision - simplified and stable
         if (this.player.y >= this.groundY - this.player.height) {
             this.player.y = this.groundY - this.player.height;
             this.player.velocityY = 0;
@@ -290,14 +290,22 @@ class KittyGame {
             this.player.doubleJump = false;
         }
         
-        // Platform collision detection
+        // Platform collision detection - fixed to be more stable
         this.platforms.forEach(platform => {
-            if (this.checkPlatformCollision(this.player, platform)) {
+            const playerLeft = this.player.x + this.player.collisionBox.offsetX;
+            const playerRight = playerLeft + this.player.collisionBox.width;
+            const playerTop = this.player.y + this.player.collisionBox.offsetY;
+            const playerBottom = playerTop + this.player.collisionBox.height;
+            
+            // Check if player is horizontally aligned with platform
+            if (playerRight > platform.x && playerLeft < platform.x + platform.width) {
+                // Check if player is falling down onto platform from above
                 if (this.player.velocityY >= 0 && 
-                    this.player.y < platform.y && 
-                    this.player.y + this.player.height > platform.y &&
-                    this.player.y + this.player.height < platform.y + platform.height + 10) {
+                    playerBottom >= platform.y && 
+                    playerBottom <= platform.y + platform.height + 10 &&
+                    playerTop < platform.y) {
                     
+                    // Land on platform
                     this.player.y = platform.y - this.player.height;
                     this.player.velocityY = 0;
                     this.player.isJumping = false;
@@ -312,7 +320,7 @@ class KittyGame {
         this.camera.targetY = Math.max(0, (this.groundY - this.player.y - 300));
         this.camera.y += (this.camera.targetY - this.camera.y) * this.camera.smoothing;
         
-        // Infinite platform generation
+        // Ensure platforms are always available above player - more frequent generation
         this.ensurePlatformsAbove();
         
         // Spawn obstacles
@@ -322,9 +330,9 @@ class KittyGame {
             this.obstacleSpawnTimer = 0;
         }
         
-        // Spawn platforms (reduced frequency since we have infinite generation)
+        // Spawn platforms more frequently for better climbing
         this.platformSpawnTimer++;
-        if (this.platformSpawnTimer > 100) {
+        if (this.platformSpawnTimer > 60) {
             this.spawnPlatform();
             this.platformSpawnTimer = 0;
         }
@@ -336,9 +344,9 @@ class KittyGame {
             this.monsterSpawnTimer = 0;
         }
         
-        // Spawn collectibles
+        // Spawn collectibles more frequently
         this.collectibleSpawnTimer++;
-        if (this.collectibleSpawnTimer > 90) {
+        if (this.collectibleSpawnTimer > 70) {
             this.spawnCollectible();
             this.collectibleSpawnTimer = 0;
         }
@@ -433,23 +441,32 @@ class KittyGame {
     }
     
     spawnPlatform() {
-        // Platforms get higher as score increases - improved spawning
+        // More aggressive platform spawning for better climbing
+        const playerAltitude = this.altitude;
         const baseHeight = this.groundY - 150;
-        const maxHeight = Math.max(50, baseHeight - (this.score * 3));
-        const platformY = Math.random() * (baseHeight - maxHeight) + maxHeight;
         
-        // Sometimes spawn very high platforms for sky gameplay
-        let finalY = platformY;
-        if (Math.random() < 0.3 && this.score > 50) {
-            finalY = Math.random() * 300 + 100; // High sky platforms
+        // Spawn platforms at various heights relative to player
+        let platformY;
+        if (Math.random() < 0.4 && playerAltitude > 100) {
+            // High altitude platforms
+            platformY = this.player.y - Math.random() * 200 - 100;
+        } else {
+            // Regular height platforms
+            const maxHeight = Math.max(50, baseHeight - (this.score * 2));
+            platformY = Math.random() * (baseHeight - maxHeight) + maxHeight;
+        }
+        
+        // Ensure platform is high enough to be useful
+        if (platformY > this.groundY - 100) {
+            platformY = this.groundY - 100 - Math.random() * 100;
         }
         
         this.platforms.push({
-            x: this.canvas.width,
-            y: finalY,
-            width: Math.random() * 100 + 80,
+            x: this.canvas.width + Math.random() * 100,
+            y: platformY,
+            width: Math.random() * 120 + 80,
             height: 20,
-            color: '#4CAF50'
+            color: this.getPlatformColor(platformY)
         });
     }
     
@@ -500,19 +517,23 @@ class KittyGame {
     }
     
     ensurePlatformsAbove() {
-        // Keep spawning platforms above the player to create infinite progression
-        const playerTopY = this.player.y - 400; // Look ahead of player
-        if (this.highestPlatform > playerTopY) {
-            // Spawn a new platform above
-            const newPlatformY = this.highestPlatform - Math.random() * 150 - 100;
-            this.platforms.push({
-                x: this.canvas.width + Math.random() * 200,
-                y: newPlatformY,
-                width: Math.random() * 100 + 80,
-                height: 20,
-                color: this.getPlatformColor(newPlatformY)
-            });
-            this.highestPlatform = newPlatformY;
+        // More aggressive platform generation - check multiple levels above player
+        const playerTopY = this.player.y - 200; // Look closer to player
+        const highestExistingPlatform = Math.min(...this.platforms.map(p => p.y), this.highestPlatform);
+        
+        if (highestExistingPlatform > playerTopY) {
+            // Spawn multiple platforms for better coverage
+            for (let i = 0; i < 3; i++) {
+                const newPlatformY = highestExistingPlatform - Math.random() * 120 - 80;
+                this.platforms.push({
+                    x: this.canvas.width + Math.random() * 300 + (i * 100),
+                    y: newPlatformY,
+                    width: Math.random() * 120 + 80,
+                    height: 20,
+                    color: this.getPlatformColor(newPlatformY)
+                });
+            }
+            this.highestPlatform = Math.min(...this.platforms.map(p => p.y));
         }
     }
     
@@ -527,26 +548,33 @@ class KittyGame {
     
     spawnCollectible() {
         let spawnY;
+        const currentAltitude = this.altitude;
         
-        // Sometimes spawn on platforms, sometimes in air, sometimes very high
-        if (this.platforms.length > 0 && Math.random() < 0.4) {
-            // Spawn near a platform
-            const platform = this.platforms[this.platforms.length - 1];
-            spawnY = platform.y - 40;
-        } else if (Math.random() < 0.3 && this.score > 30) {
-            // Spawn very high for sky gameplay
-            spawnY = Math.random() * 200 + 50;
+        // Spawn collectibles more strategically based on current altitude
+        if (this.platforms.length > 0 && Math.random() < 0.5) {
+            // Spawn near platforms, especially high ones
+            const nearbyPlatforms = this.platforms.filter(p => 
+                p.x > this.canvas.width * 0.5 && p.x < this.canvas.width * 1.2
+            );
+            if (nearbyPlatforms.length > 0) {
+                const platform = nearbyPlatforms[Math.floor(Math.random() * nearbyPlatforms.length)];
+                spawnY = platform.y - 40 - Math.random() * 30;
+            } else {
+                spawnY = this.player.y - Math.random() * 150 - 50;
+            }
         } else {
-            // Spawn in air or on ground
-            spawnY = this.groundY - Math.random() * 200 - 50;
+            // Spawn in air at various altitudes
+            const minY = Math.max(50, this.player.y - 300);
+            const maxY = this.groundY - 50;
+            spawnY = Math.random() * (maxY - minY) + minY;
         }
         
-        // Determine fish type based on altitude
+        // Determine fish type based on altitude from ground
         const altitude = this.groundY - spawnY;
         let fishType = this.getFishType(altitude);
         
         this.collectibles.push({
-            x: this.canvas.width,
+            x: this.canvas.width + Math.random() * 200,
             y: spawnY,
             width: 35,
             height: 25,
@@ -564,21 +592,22 @@ class KittyGame {
     }
     
     getFishType(altitude) {
-        if (altitude > 800) {
+        // Fixed fish type determination with clear altitude brackets
+        if (altitude > 600) {
             return {
                 type: 'diamond',
                 color: '#E1F5FE',
                 points: 100,
                 ability: 'invincibility'
             };
-        } else if (altitude > 600) {
+        } else if (altitude > 400) {
             return {
                 type: 'rainbow',
                 color: '#FF6B6B',
                 points: 50,
                 ability: 'doubleJump'
             };
-        } else if (altitude > 300) {
+        } else if (altitude > 200) {
             return {
                 type: 'golden',
                 color: '#FFD700',
@@ -841,35 +870,52 @@ class KittyGame {
     
     drawSpecialFish(fish) {
         if (this.imagesReady && this.images.fish) {
-            // Tint the fish image based on type
-            if (fish.type !== 'regular') {
-                this.ctx.save();
-                this.ctx.globalCompositeOperation = 'multiply';
-                this.ctx.fillStyle = fish.color;
-                this.ctx.fillRect(fish.x, fish.y, fish.width, fish.height);
-                this.ctx.globalCompositeOperation = 'destination-atop';
-                this.ctx.drawImage(this.images.fish, fish.x, fish.y, fish.width, fish.height);
-                this.ctx.restore();
-            } else {
-                this.ctx.drawImage(this.images.fish, fish.x, fish.y, fish.width, fish.height);
-            }
+            this.ctx.save();
             
             // Special effects for different fish types
+            if (fish.type === 'diamond') {
+                // Diamond fish - bright white glow
+                this.ctx.shadowColor = '#FFFFFF';
+                this.ctx.shadowBlur = 15;
+                this.ctx.globalAlpha = 0.9;
+            } else if (fish.type === 'rainbow') {
+                // Rainbow fish - colorful glow
+                this.ctx.shadowColor = fish.color;
+                this.ctx.shadowBlur = 10;
+            } else if (fish.type === 'golden') {
+                // Golden fish - yellow glow
+                this.ctx.shadowColor = '#FFD700';
+                this.ctx.shadowBlur = 8;
+            }
+            
+            // Draw the fish image
+            this.ctx.drawImage(this.images.fish, fish.x, fish.y, fish.width, fish.height);
+            
+            // Additional visual effects
             if (fish.type === 'rainbow') {
                 this.ctx.strokeStyle = '#FF6B6B';
                 this.ctx.lineWidth = 2;
                 this.ctx.strokeRect(fish.x - 2, fish.y - 2, fish.width + 4, fish.height + 4);
             } else if (fish.type === 'diamond') {
+                // Sparkle effect
                 this.ctx.fillStyle = '#FFFFFF';
-                this.ctx.globalAlpha = 0.7;
-                this.ctx.fillRect(fish.x + fish.width/4, fish.y + fish.height/4, fish.width/2, fish.height/2);
-                this.ctx.globalAlpha = 1;
+                this.ctx.globalAlpha = 0.8;
+                this.ctx.fillRect(fish.x + fish.width/4, fish.y + 2, 4, 4);
+                this.ctx.fillRect(fish.x + 3*fish.width/4, fish.y + fish.height/2, 4, 4);
+                this.ctx.fillRect(fish.x + fish.width/2, fish.y + 3*fish.height/4, 4, 4);
+            } else if (fish.type === 'golden') {
+                // Golden shimmer
+                this.ctx.fillStyle = '#FFFF00';
+                this.ctx.globalAlpha = 0.6;
+                this.ctx.fillRect(fish.x + fish.width/3, fish.y + fish.height/3, fish.width/3, fish.height/3);
             }
+            
+            this.ctx.restore();
         } else {
-            // Fallback drawing
+            // Fallback drawing with better colors
             this.ctx.fillStyle = fish.color;
             this.ctx.fillRect(fish.x + 5, fish.y + 5, fish.width - 10, fish.height - 10);
-            this.ctx.fillStyle = '#fff';
+            this.ctx.fillStyle = fish.type === 'diamond' ? '#FFFFFF' : '#000000';
             this.ctx.fillRect(fish.x + 2, fish.y + 8, 3, 3);
         }
     }
