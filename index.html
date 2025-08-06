@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kitty Adventure</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One:wght@400&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="game-container">
+        <div class="ui-overlay">
+            <div class="score-display">
+                <div class="score-label">Score</div>
+                <div class="score-value" id="score">0</div>
+            </div>
+            <div class="lives-display" id="lives">
+                <span class="heart">💗</span>
+                <span class="heart">💗</span>
+                <span class="heart">💗</span>
+            </div>
+        </div>
+        
+        <canvas id="gameCanvas"></canvas>
+        
+        <div class="start-screen" id="startScreen">
+            <div class="title">
+                <h1>🐱 Kitty Adventure</h1>
+                <p>Help the kitty collect fish and avoid obstacles!</p>
+            </div>
+            <div class="controls">
+                <p><strong>Desktop:</strong> SPACE or UP arrow to jump</p>
+                <p><strong>Mobile:</strong> Tap to jump</p>
+            </div>
+            <button class="start-btn" id="startBtn">🎮 Start Game</button>
+        </div>
+        
+        <div class="game-over-screen" id="gameOverScreen" style="display: none;">
+            <div class="game-over-content">
+                <h2>Game Over!</h2>
+                <p>Final Score: <span id="finalScore">0</span></p>
+                <button class="restart-btn" id="restartBtn">🔄 Play Again</button>
+            </div>
+        </div>
+        
+        <div class="mobile-controls" id="mobileControls" style="display: none;">
+            <button class="jump-btn" id="jumpBtn">🎯 Jump</button>
+        </div>
+    </div>
+    
+    <script src="game.js"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
