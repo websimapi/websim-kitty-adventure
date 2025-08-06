@@ -944,6 +944,10 @@ class KittyGame {
     }
     
     drawPlatform(x, y, width, height, color = '#4CAF50') {
+        const altitude = this.groundY - y;
+        const textureType = this.getPlatformTexture(altitude);
+        const animationType = this.getPlatformAnimation(altitude);
+        
         // Platform base
         this.ctx.fillStyle = color;
         this.ctx.fillRect(x, y, width, height);
@@ -956,11 +960,324 @@ class KittyGame {
         this.ctx.fillStyle = this.darkenColor(color, 0.3);
         this.ctx.fillRect(x, y + height - 4, width, 4);
         
-        // Platform decorations
-        this.ctx.fillStyle = this.lightenColor(color, 0.1);
-        for (let i = 0; i < width; i += 15) {
-            this.ctx.fillRect(x + i, y + 2, 3, height - 4);
+        // Apply texture based on altitude
+        this.applyPlatformTexture(x, y, width, height, color, textureType, animationType);
+    }
+    
+    getPlatformTexture(altitude) {
+        // Cycle through different texture types based on altitude
+        const textureTypes = [
+            'dots', 'stripes', 'waves', 'grid', 'checkerboard', 
+            'stars', 'diamonds', 'circles', 'zigzag', 'hexagons',
+            'triangles', 'spirals'
+        ];
+        
+        const textureIndex = Math.floor(altitude / 500) % textureTypes.length;
+        return textureTypes[textureIndex];
+    }
+    
+    getPlatformAnimation(altitude) {
+        // Cycle through different animation types based on altitude
+        const animationTypes = [
+            'none', 'pulse', 'rotate', 'slide', 'glow', 
+            'shimmer', 'wave', 'bounce', 'spin', 'fade',
+            'breathe', 'flow'
+        ];
+        
+        const animationIndex = Math.floor(altitude / 400) % animationTypes.length;
+        return animationTypes[animationIndex];
+    }
+    
+    applyPlatformTexture(x, y, width, height, baseColor, textureType, animationType) {
+        // Save context for texture drawing
+        this.ctx.save();
+        
+        // Create clipping region for the platform
+        this.ctx.beginPath();
+        this.ctx.rect(x, y, width, height);
+        this.ctx.clip();
+        
+        // Get animation offset based on time and type
+        const time = Date.now() * 0.001; // Convert to seconds
+        const animationOffset = this.getAnimationOffset(time, animationType);
+        
+        // Apply texture pattern
+        this.ctx.globalAlpha = 0.4;
+        
+        switch (textureType) {
+            case 'dots':
+                this.drawDotsTexture(x, y, width, height, baseColor, animationOffset);
+                break;
+            case 'stripes':
+                this.drawStripesTexture(x, y, width, height, baseColor, animationOffset);
+                break;
+            case 'waves':
+                this.drawWavesTexture(x, y, width, height, baseColor, animationOffset);
+                break;
+            case 'grid':
+                this.drawGridTexture(x, y, width, height, baseColor, animationOffset);
+                break;
+            case 'checkerboard':
+                this.drawCheckerboardTexture(x, y, width, height, baseColor, animationOffset);
+                break;
+            case 'stars':
+                this.drawStarsTexture(x, y, width, height, baseColor, animationOffset);
+                break;
+            case 'diamonds':
+                this.drawDiamondsTexture(x, y, width, height, baseColor, animationOffset);
+                break;
+            case 'circles':
+                this.drawCirclesTexture(x, y, width, height, baseColor, animationOffset);
+                break;
+            case 'zigzag':
+                this.drawZigzagTexture(x, y, width, height, baseColor, animationOffset);
+                break;
+            case 'hexagons':
+                this.drawHexagonsTexture(x, y, width, height, baseColor, animationOffset);
+                break;
+            case 'triangles':
+                this.drawTrianglesTexture(x, y, width, height, baseColor, animationOffset);
+                break;
+            case 'spirals':
+                this.drawSpiralsTexture(x, y, width, height, baseColor, animationOffset);
+                break;
         }
+        
+        this.ctx.restore();
+    }
+    
+    getAnimationOffset(time, animationType) {
+        switch (animationType) {
+            case 'pulse':
+                return Math.sin(time * 3) * 0.5 + 0.5;
+            case 'rotate':
+                return time * 45; // degrees per second
+            case 'slide':
+                return (time * 20) % 40; // sliding offset
+            case 'glow':
+                return Math.sin(time * 2) * 0.3 + 0.7;
+            case 'shimmer':
+                return Math.sin(time * 4) * 10;
+            case 'wave':
+                return Math.sin(time * 2) * 5;
+            case 'bounce':
+                return Math.abs(Math.sin(time * 3)) * 3;
+            case 'spin':
+                return time * 90;
+            case 'fade':
+                return Math.sin(time * 1.5) * 0.4 + 0.6;
+            case 'breathe':
+                return Math.sin(time * 1) * 0.2 + 0.8;
+            case 'flow':
+                return (time * 30) % 60;
+            default:
+                return 0;
+        }
+    }
+    
+    drawDotsTexture(x, y, width, height, baseColor, animationOffset) {
+        const dotSize = 3 + animationOffset * 0.5;
+        this.ctx.fillStyle = this.lightenColor(baseColor, 0.4);
+        
+        for (let dx = 8; dx < width; dx += 15) {
+            for (let dy = 4; dy < height; dy += 8) {
+                this.ctx.fillRect(x + dx, y + dy, dotSize, dotSize);
+            }
+        }
+    }
+    
+    drawStripesTexture(x, y, width, height, baseColor, animationOffset) {
+        this.ctx.fillStyle = this.lightenColor(baseColor, 0.3);
+        const stripeWidth = 4;
+        const offset = animationOffset % 20;
+        
+        for (let dx = -offset; dx < width + 20; dx += 10) {
+            this.ctx.fillRect(x + dx, y, stripeWidth, height);
+        }
+    }
+    
+    drawWavesTexture(x, y, width, height, baseColor, animationOffset) {
+        this.ctx.strokeStyle = this.lightenColor(baseColor, 0.5);
+        this.ctx.lineWidth = 2;
+        
+        for (let wave = 0; wave < 3; wave++) {
+            this.ctx.beginPath();
+            for (let dx = 0; dx <= width; dx += 5) {
+                const waveY = y + height/2 + Math.sin((dx + animationOffset * 2) * 0.1 + wave * 2) * 4;
+                if (dx === 0) {
+                    this.ctx.moveTo(x + dx, waveY);
+                } else {
+                    this.ctx.lineTo(x + dx, waveY);
+                }
+            }
+            this.ctx.stroke();
+        }
+    }
+    
+    drawGridTexture(x, y, width, height, baseColor, animationOffset) {
+        this.ctx.strokeStyle = this.lightenColor(baseColor, 0.4);
+        this.ctx.lineWidth = 1;
+        const gridSize = 12 + animationOffset * 0.2;
+        
+        for (let dx = 0; dx <= width; dx += gridSize) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x + dx, y);
+            this.ctx.lineTo(x + dx, y + height);
+            this.ctx.stroke();
+        }
+        
+        for (let dy = 0; dy <= height; dy += 8) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, y + dy);
+            this.ctx.lineTo(x + width, y + dy);
+            this.ctx.stroke();
+        }
+    }
+    
+    drawCheckerboardTexture(x, y, width, height, baseColor, animationOffset) {
+        this.ctx.fillStyle = this.lightenColor(baseColor, 0.3);
+        const checkSize = 8 + animationOffset * 0.3;
+        const offset = (animationOffset * 0.5) % checkSize;
+        
+        for (let dx = -offset; dx < width + checkSize; dx += checkSize) {
+            for (let dy = 0; dy < height; dy += checkSize) {
+                if ((Math.floor((dx + offset) / checkSize) + Math.floor(dy / checkSize)) % 2 === 0) {
+                    this.ctx.fillRect(x + dx, y + dy, checkSize, checkSize);
+                }
+            }
+        }
+    }
+    
+    drawStarsTexture(x, y, width, height, baseColor, animationOffset) {
+        this.ctx.fillStyle = this.lightenColor(baseColor, 0.6);
+        const starSize = 2 + animationOffset * 0.3;
+        
+        for (let dx = 10; dx < width; dx += 25) {
+            for (let dy = 6; dy < height; dy += 12) {
+                // Simple star shape
+                this.ctx.fillRect(x + dx - starSize/2, y + dy, starSize, starSize);
+                this.ctx.fillRect(x + dx, y + dy - starSize/2, starSize, starSize);
+            }
+        }
+    }
+    
+    drawDiamondsTexture(x, y, width, height, baseColor, animationOffset) {
+        this.ctx.fillStyle = this.lightenColor(baseColor, 0.4);
+        const diamondSize = 4 + animationOffset * 0.2;
+        
+        for (let dx = 12; dx < width; dx += 20) {
+            for (let dy = 6; dy < height; dy += 10) {
+                // Diamond shape
+                this.ctx.save();
+                this.ctx.translate(x + dx, y + dy);
+                this.ctx.rotate(Math.PI / 4);
+                this.ctx.fillRect(-diamondSize/2, -diamondSize/2, diamondSize, diamondSize);
+                this.ctx.restore();
+            }
+        }
+    }
+    
+    drawCirclesTexture(x, y, width, height, baseColor, animationOffset) {
+        this.ctx.fillStyle = this.lightenColor(baseColor, 0.4);
+        const radius = 2 + animationOffset * 0.2;
+        
+        for (let dx = 10; dx < width; dx += 18) {
+            for (let dy = 6; dy < height; dy += 9) {
+                this.ctx.beginPath();
+                this.ctx.arc(x + dx, y + dy, radius, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+        }
+    }
+    
+    drawZigzagTexture(x, y, width, height, baseColor, animationOffset) {
+        this.ctx.strokeStyle = this.lightenColor(baseColor, 0.5);
+        this.ctx.lineWidth = 2;
+        
+        for (let row = 0; row < 2; row++) {
+            this.ctx.beginPath();
+            const rowY = y + (row + 1) * height / 3;
+            let zigzagX = 0;
+            
+            while (zigzagX < width) {
+                this.ctx.lineTo(x + zigzagX + animationOffset * 0.1, rowY);
+                zigzagX += 8;
+                this.ctx.lineTo(x + zigzagX + animationOffset * 0.1, rowY + (zigzagX % 16 === 8 ? -4 : 4));
+                zigzagX += 8;
+            }
+            this.ctx.stroke();
+        }
+    }
+    
+    drawHexagonsTexture(x, y, width, height, baseColor, animationOffset) {
+        this.ctx.strokeStyle = this.lightenColor(baseColor, 0.4);
+        this.ctx.lineWidth = 1;
+        const hexSize = 3 + animationOffset * 0.1;
+        
+        for (let dx = 12; dx < width; dx += 16) {
+            for (let dy = 8; dy < height; dy += 12) {
+                this.drawHexagon(x + dx, y + dy, hexSize);
+            }
+        }
+    }
+    
+    drawTrianglesTexture(x, y, width, height, baseColor, animationOffset) {
+        this.ctx.fillStyle = this.lightenColor(baseColor, 0.4);
+        const triSize = 3 + animationOffset * 0.2;
+        
+        for (let dx = 10; dx < width; dx += 15) {
+            for (let dy = 6; dy < height; dy += 10) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(x + dx, y + dy - triSize);
+                this.ctx.lineTo(x + dx - triSize, y + dy + triSize);
+                this.ctx.lineTo(x + dx + triSize, y + dy + triSize);
+                this.ctx.closePath();
+                this.ctx.fill();
+            }
+        }
+    }
+    
+    drawSpiralsTexture(x, y, width, height, baseColor, animationOffset) {
+        this.ctx.strokeStyle = this.lightenColor(baseColor, 0.5);
+        this.ctx.lineWidth = 1;
+        
+        for (let dx = 15; dx < width; dx += 25) {
+            for (let dy = 10; dy < height; dy += 15) {
+                this.ctx.beginPath();
+                const centerX = x + dx;
+                const centerY = y + dy;
+                
+                for (let angle = 0; angle < Math.PI * 4; angle += 0.2) {
+                    const radius = angle * 0.5;
+                    const spiralX = centerX + Math.cos(angle + animationOffset * 0.1) * radius;
+                    const spiralY = centerY + Math.sin(angle + animationOffset * 0.1) * radius;
+                    
+                    if (angle === 0) {
+                        this.ctx.moveTo(spiralX, spiralY);
+                    } else {
+                        this.ctx.lineTo(spiralX, spiralY);
+                    }
+                }
+                this.ctx.stroke();
+            }
+        }
+    }
+    
+    drawHexagon(centerX, centerY, size) {
+        this.ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+            const angle = (i * Math.PI) / 3;
+            const x = centerX + size * Math.cos(angle);
+            const y = centerY + size * Math.sin(angle);
+            
+            if (i === 0) {
+                this.ctx.moveTo(x, y);
+            } else {
+                this.ctx.lineTo(x, y);
+            }
+        }
+        this.ctx.closePath();
+        this.ctx.stroke();
     }
     
     drawSpecialFish(fish) {
