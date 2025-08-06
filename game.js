@@ -229,20 +229,28 @@ class KittyGame {
             this.player.onGround = true;
         }
         
-        // Platform collision detection - fixed logic
+        // Platform collision detection - improved to prevent bouncing
         this.platforms.forEach(platform => {
             if (this.checkPlatformCollision(this.player, platform)) {
-                // Check if player is falling onto platform from above
-                if (this.player.velocityY >= 0 && 
-                    this.player.y < platform.y && 
-                    this.player.y + this.player.height > platform.y &&
-                    this.player.y + this.player.height < platform.y + platform.height + 10) {
+                // Check if player is falling onto platform from above and not already stable on it
+                if (this.player.velocityY > 0.5 && 
+                    this.player.y + this.player.height <= platform.y + 15 &&
+                    this.player.y + this.player.height >= platform.y - 5) {
                     
                     this.player.y = platform.y - this.player.height;
                     this.player.velocityY = 0;
                     this.player.isJumping = false;
                     this.player.onPlatform = true;
                     this.player.onGround = false;
+                } else if (this.player.velocityY <= 0.5 && 
+                          this.player.y + this.player.height <= platform.y + 5 &&
+                          this.player.y + this.player.height >= platform.y - 2) {
+                    // Player is stable on platform - just maintain position without bouncing
+                    this.player.onPlatform = true;
+                    this.player.onGround = false;
+                    if (this.player.velocityY > 0) {
+                        this.player.velocityY = 0;
+                    }
                 }
             }
         });
