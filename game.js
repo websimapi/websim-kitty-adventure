@@ -229,13 +229,14 @@ class KittyGame {
             this.player.onGround = true;
         }
         
-        // Platform collision detection - improved logic
+        // Platform collision detection - fixed logic
         this.platforms.forEach(platform => {
             if (this.checkPlatformCollision(this.player, platform)) {
                 // Check if player is falling onto platform from above
                 if (this.player.velocityY >= 0 && 
-                    this.player.y + this.player.height - 10 <= platform.y && 
-                    this.player.y + this.player.height >= platform.y) {
+                    this.player.y < platform.y && 
+                    this.player.y + this.player.height > platform.y &&
+                    this.player.y + this.player.height < platform.y + platform.height + 10) {
                     
                     this.player.y = platform.y - this.player.height;
                     this.player.velocityY = 0;
