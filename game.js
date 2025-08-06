@@ -332,7 +332,7 @@ class KittyGame {
         
         // Spawn platforms more frequently for better climbing
         this.platformSpawnTimer++;
-        if (this.platformSpawnTimer > 60) {
+        if (this.platformSpawnTimer > 30) { // Reduced from 60 to 30 for more frequent spawning
             this.spawnPlatform();
             this.platformSpawnTimer = 0;
         }
@@ -441,33 +441,33 @@ class KittyGame {
     }
     
     spawnPlatform() {
-        // More aggressive platform spawning for better climbing
-        const playerAltitude = this.altitude;
-        const baseHeight = this.groundY - 150;
+        // Generate platforms across a much wider vertical range
+        // Always spawn platforms at multiple altitude levels regardless of player position
+        const platformsToSpawn = Math.floor(Math.random() * 3) + 2; // 2-4 platforms each time
+        const spawnRange = 300; // Horizontal spread
         
-        // Spawn platforms at various heights relative to player
-        let platformY;
-        if (Math.random() < 0.4 && playerAltitude > 100) {
-            // High altitude platforms
-            platformY = this.player.y - Math.random() * 200 - 100;
-        } else {
-            // Regular height platforms
-            const maxHeight = Math.max(50, baseHeight - (this.score * 2));
-            platformY = Math.random() * (baseHeight - maxHeight) + maxHeight;
+        for (let i = 0; i < platformsToSpawn; i++) {
+            // Generate platforms across the entire vertical space
+            // Not just relative to player position
+            const baseY = this.groundY - 100; // Start well above ground
+            const maxAltitude = Math.max(1000, this.altitude + 500); // Always generate higher than current altitude
+            const minAltitude = 50; // Always have low-altitude platforms
+            
+            // Random Y position across the entire range
+            const altitudeRange = Math.random() * maxAltitude + minAltitude;
+            const platformY = baseY - altitudeRange;
+            
+            // Spread platforms horizontally
+            const platformX = this.canvas.width + Math.random() * spawnRange + (i * 120);
+            
+            this.platforms.push({
+                x: platformX,
+                y: platformY,
+                width: Math.random() * 120 + 80,
+                height: 20,
+                color: this.getPlatformColor(platformY)
+            });
         }
-        
-        // Ensure platform is high enough to be useful
-        if (platformY > this.groundY - 100) {
-            platformY = this.groundY - 100 - Math.random() * 100;
-        }
-        
-        this.platforms.push({
-            x: this.canvas.width + Math.random() * 100,
-            y: platformY,
-            width: Math.random() * 120 + 80,
-            height: 20,
-            color: this.getPlatformColor(platformY)
-        });
     }
     
     spawnMonster() {
@@ -517,33 +517,91 @@ class KittyGame {
     }
     
     ensurePlatformsAbove() {
-        // More aggressive platform generation - check multiple levels above player
-        const playerTopY = this.player.y - 200; // Look closer to player
+        // Much more comprehensive platform generation - ensure platforms at ALL levels
+        const playerTopY = this.player.y - 200;
+        const playerBottomY = this.player.y + 400; // Also check below player
         const highestExistingPlatform = Math.min(...this.platforms.map(p => p.y), this.highestPlatform);
+        const lowestExistingPlatform = Math.max(...this.platforms.map(p => p.y), this.groundY - 100);
         
+        // Generate platforms above player if needed
         if (highestExistingPlatform > playerTopY) {
-            // Spawn multiple platforms for better coverage
-            for (let i = 0; i < 3; i++) {
-                const newPlatformY = highestExistingPlatform - Math.random() * 120 - 80;
-                this.platforms.push({
-                    x: this.canvas.width + Math.random() * 300 + (i * 100),
-                    y: newPlatformY,
-                    width: Math.random() * 120 + 80,
-                    height: 20,
-                    color: this.getPlatformColor(newPlatformY)
-                });
+            const levelsToGenerate = Math.ceil((highestExistingPlatform - playerTopY) / 100);
+            for (let level = 0; level < Math.min(levelsToGenerate, 8); level++) {
+                const levelY = highestExistingPlatform - (level + 1) * 80 - Math.random() * 40;
+                const platformsAtLevel = Math.floor(Math.random() * 4) + 2; // 2-5 platforms per level
+                
+                for (let p = 0; p < platformsAtLevel; p++) {
+                    this.platforms.push({
+                        x: this.canvas.width + Math.random() * 600 + (p * 100),
+                        y: levelY - Math.random() * 30,
+                        width: Math.random() * 120 + 80,
+                        height: 20,
+                        color: this.getPlatformColor(levelY)
+                    });
+                }
             }
             this.highestPlatform = Math.min(...this.platforms.map(p => p.y));
+        }
+        
+        // Generate platforms below player if needed (fill gaps)
+        if (lowestExistingPlatform < playerBottomY && lowestExistingPlatform > this.groundY - 80) {
+            const levelsToFill = Math.ceil((playerBottomY - lowestExistingPlatform) / 100);
+            for (let level = 0; level < Math.min(levelsToFill, 6); level++) {
+                const levelY = lowestExistingPlatform + (level + 1) * 80 + Math.random() * 40;
+                if (levelY >= this.groundY - 80) break; // Don't go too close to ground
+                
+                const platformsAtLevel = Math.floor(Math.random() * 3) + 2; // 2-4 platforms per level
+                
+                for (let p = 0; p < platformsAtLevel; p++) {
+                    this.platforms.push({
+                        x: this.canvas.width + Math.random() * 400 + (p * 80),
+                        y: levelY + Math.random() * 20,
+                        width: Math.random() * 120 + 80,
+                        height: 20,
+                        color: this.getPlatformColor(levelY)
+                    });
+                }
+            }
+        }
+        
+        // Always generate some platforms at regular intervals for continuous play
+        const regularSpawnTimer = Math.floor(Date.now() / 1000) % 3;
+        if (regularSpawnTimer === 0) {
+            // Generate platforms at multiple altitude levels regularly
+            const altitudeLevels = [100, 200, 350, 500, 700, 1000, 1400, 1800, 2300, 3000];
+            const levelToSpawn = altitudeLevels[Math.floor(Math.random() * altitudeLevels.length)];
+            const platformY = this.groundY - levelToSpawn - Math.random() * 100;
+            
+            // Generate multiple platforms at this level
+            for (let i = 0; i < 3; i++) {
+                this.platforms.push({
+                    x: this.canvas.width + Math.random() * 300 + (i * 100),
+                    y: platformY + Math.random() * 50 - 25,
+                    width: Math.random() * 120 + 80,
+                    height: 20,
+                    color: this.getPlatformColor(platformY)
+                });
+            }
         }
     }
     
     getPlatformColor(y) {
         const altitude = this.groundY - y;
-        if (altitude > 800) return '#9C27B0'; // Purple for very high
-        if (altitude > 600) return '#3F51B5'; // Indigo for high
-        if (altitude > 400) return '#2196F3'; // Blue for medium-high
-        if (altitude > 200) return '#4CAF50'; // Green for medium
-        return '#8BC34A'; // Light green for low
+        
+        // Infinite color progression system
+        if (altitude > 3000) return '#E91E63'; // Pink for ultra-high
+        if (altitude > 2500) return '#9C27B0'; // Purple for very high
+        if (altitude > 2000) return '#673AB7'; // Deep purple
+        if (altitude > 1500) return '#3F51B5'; // Indigo for high
+        if (altitude > 1200) return '#2196F3'; // Blue
+        if (altitude > 1000) return '#03A9F4'; // Light blue
+        if (altitude > 800) return '#00BCD4'; // Cyan
+        if (altitude > 600) return '#009688'; // Teal
+        if (altitude > 450) return '#4CAF50'; // Green for medium-high
+        if (altitude > 300) return '#8BC34A'; // Light green
+        if (altitude > 200) return '#CDDC39'; // Lime green
+        if (altitude > 100) return '#FFEB3B'; // Yellow for low-medium
+        return '#FFC107'; // Amber for low altitude
     }
     
     spawnCollectible() {
