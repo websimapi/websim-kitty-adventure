@@ -440,33 +440,85 @@ class KittyGame {
         });
     }
     
-    spawnPlatform() {
-        // Generate platforms across a much wider vertical range
-        // Always spawn platforms at multiple altitude levels regardless of player position
-        const platformsToSpawn = Math.floor(Math.random() * 3) + 2; // 2-4 platforms each time
-        const spawnRange = 300; // Horizontal spread
+    ensurePlatformsAbove() {
+        // Simplified and efficient platform generation system
+        const currentPlayerAltitude = this.groundY - this.player.y;
+        const platformInterval = 120; // Increased spacing between platform levels
+        const horizontalSpread = 300;
+        const verticalRange = 400; // Reduced range to generate fewer platforms
         
-        for (let i = 0; i < platformsToSpawn; i++) {
-            // Generate platforms across the entire vertical space
-            // Not just relative to player position
-            const baseY = this.groundY - 100; // Start well above ground
-            const maxAltitude = Math.max(1000, this.altitude + 500); // Always generate higher than current altitude
-            const minAltitude = 50; // Always have low-altitude platforms
+        // Calculate altitude ranges to ensure platforms for
+        const minAltitudeToEnsure = Math.max(0, currentPlayerAltitude - verticalRange/2);
+        const maxAltitudeToEnsure = currentPlayerAltitude + verticalRange;
+        
+        // Generate platforms at regular intervals but with fewer platforms per level
+        for (let altitude = minAltitudeToEnsure; altitude <= maxAltitudeToEnsure; altitude += platformInterval) {
+            const platformY = this.groundY - altitude;
             
-            // Random Y position across the entire range
-            const altitudeRange = Math.random() * maxAltitude + minAltitude;
-            const platformY = baseY - altitudeRange;
+            // Skip if too close to ground
+            if (platformY >= this.groundY - 50) continue;
             
-            // Spread platforms horizontally
-            const platformX = this.canvas.width + Math.random() * spawnRange + (i * 120);
+            // Check if we already have sufficient platforms at this altitude level
+            const platformsAtThisLevel = this.platforms.filter(p => 
+                Math.abs(p.y - platformY) < platformInterval/2 && 
+                p.x > this.canvas.width - horizontalSpread && 
+                p.x < this.canvas.width + horizontalSpread
+            );
             
-            this.platforms.push({
-                x: platformX,
-                y: platformY,
-                width: Math.random() * 120 + 80,
-                height: 20,
-                color: this.getPlatformColor(platformY)
-            });
+            // Generate fewer platforms - only 1 if we have none at this level
+            if (platformsAtThisLevel.length === 0) {
+                // Generate only 1-2 platforms per level instead of 3
+                const platformsToGenerate = Math.random() < 0.7 ? 1 : 2;
+                
+                for (let i = 0; i < platformsToGenerate; i++) {
+                    // Spread platforms horizontally with more spacing
+                    const baseX = this.canvas.width + (i * 200) + Math.random() * 150;
+                    const platformYVariation = platformY + (Math.random() - 0.5) * 30;
+                    
+                    this.platforms.push({
+                        x: baseX,
+                        y: platformYVariation,
+                        width: Math.random() * 80 + 100, // Slightly larger platforms
+                        height: 20,
+                        color: this.getPlatformColor(platformYVariation)
+                    });
+                }
+            }
+        }
+        
+        // Update highest platform tracker for other systems
+        if (this.platforms.length > 0) {
+            this.highestPlatform = Math.min(...this.platforms.map(p => p.y));
+        }
+    }
+    
+    spawnPlatform() {
+        // Simplified platform spawning - only generate when needed
+        const currentAltitude = this.groundY - this.player.y;
+        
+        // Only generate platforms if we're running low in the forward direction
+        const platformsAhead = this.platforms.filter(p => 
+            p.x > this.canvas.width && 
+            p.x < this.canvas.width + 400 &&
+            Math.abs((this.groundY - p.y) - currentAltitude) < 200
+        );
+        
+        // Only spawn if we have fewer than 3 platforms ahead at similar altitude
+        if (platformsAhead.length < 3) {
+            // Generate platforms at current level and slightly above/below
+            for (let levelOffset = -1; levelOffset <= 1; levelOffset++) {
+                const levelY = this.player.y + (levelOffset * 120);
+                if (levelY >= this.groundY - 50) continue;
+                
+                // Generate only 1 platform per level
+                this.platforms.push({
+                    x: this.canvas.width + Math.random() * 200,
+                    y: levelY + (Math.random() - 0.5) * 30,
+                    width: Math.random() * 80 + 90,
+                    height: 20,
+                    color: this.getPlatformColor(levelY)
+                });
+            }
         }
     }
     
@@ -516,92 +568,16 @@ class KittyGame {
         });
     }
     
-    ensurePlatformsAbove() {
-        // Much more comprehensive platform generation - ensure platforms at ALL levels
-        const playerTopY = this.player.y - 200;
-        const playerBottomY = this.player.y + 400; // Also check below player
-        const highestExistingPlatform = Math.min(...this.platforms.map(p => p.y), this.highestPlatform);
-        const lowestExistingPlatform = Math.max(...this.platforms.map(p => p.y), this.groundY - 100);
-        
-        // Generate platforms above player if needed
-        if (highestExistingPlatform > playerTopY) {
-            const levelsToGenerate = Math.ceil((highestExistingPlatform - playerTopY) / 100);
-            for (let level = 0; level < Math.min(levelsToGenerate, 8); level++) {
-                const levelY = highestExistingPlatform - (level + 1) * 80 - Math.random() * 40;
-                const platformsAtLevel = Math.floor(Math.random() * 4) + 2; // 2-5 platforms per level
-                
-                for (let p = 0; p < platformsAtLevel; p++) {
-                    this.platforms.push({
-                        x: this.canvas.width + Math.random() * 600 + (p * 100),
-                        y: levelY - Math.random() * 30,
-                        width: Math.random() * 120 + 80,
-                        height: 20,
-                        color: this.getPlatformColor(levelY)
-                    });
-                }
-            }
-            this.highestPlatform = Math.min(...this.platforms.map(p => p.y));
-        }
-        
-        // Generate platforms below player if needed (fill gaps)
-        if (lowestExistingPlatform < playerBottomY && lowestExistingPlatform > this.groundY - 80) {
-            const levelsToFill = Math.ceil((playerBottomY - lowestExistingPlatform) / 100);
-            for (let level = 0; level < Math.min(levelsToFill, 6); level++) {
-                const levelY = lowestExistingPlatform + (level + 1) * 80 + Math.random() * 40;
-                if (levelY >= this.groundY - 80) break; // Don't go too close to ground
-                
-                const platformsAtLevel = Math.floor(Math.random() * 3) + 2; // 2-4 platforms per level
-                
-                for (let p = 0; p < platformsAtLevel; p++) {
-                    this.platforms.push({
-                        x: this.canvas.width + Math.random() * 400 + (p * 80),
-                        y: levelY + Math.random() * 20,
-                        width: Math.random() * 120 + 80,
-                        height: 20,
-                        color: this.getPlatformColor(levelY)
-                    });
-                }
-            }
-        }
-        
-        // Always generate some platforms at regular intervals for continuous play
-        const regularSpawnTimer = Math.floor(Date.now() / 1000) % 3;
-        if (regularSpawnTimer === 0) {
-            // Generate platforms at multiple altitude levels regularly
-            const altitudeLevels = [100, 200, 350, 500, 700, 1000, 1400, 1800, 2300, 3000];
-            const levelToSpawn = altitudeLevels[Math.floor(Math.random() * altitudeLevels.length)];
-            const platformY = this.groundY - levelToSpawn - Math.random() * 100;
-            
-            // Generate multiple platforms at this level
-            for (let i = 0; i < 3; i++) {
-                this.platforms.push({
-                    x: this.canvas.width + Math.random() * 300 + (i * 100),
-                    y: platformY + Math.random() * 50 - 25,
-                    width: Math.random() * 120 + 80,
-                    height: 20,
-                    color: this.getPlatformColor(platformY)
-                });
-            }
-        }
-    }
-    
     getPlatformColor(y) {
         const altitude = this.groundY - y;
         
-        // Infinite color progression system
-        if (altitude > 3000) return '#E91E63'; // Pink for ultra-high
-        if (altitude > 2500) return '#9C27B0'; // Purple for very high
-        if (altitude > 2000) return '#673AB7'; // Deep purple
-        if (altitude > 1500) return '#3F51B5'; // Indigo for high
-        if (altitude > 1200) return '#2196F3'; // Blue
-        if (altitude > 1000) return '#03A9F4'; // Light blue
-        if (altitude > 800) return '#00BCD4'; // Cyan
-        if (altitude > 600) return '#009688'; // Teal
-        if (altitude > 450) return '#4CAF50'; // Green for medium-high
-        if (altitude > 300) return '#8BC34A'; // Light green
-        if (altitude > 200) return '#CDDC39'; // Lime green
-        if (altitude > 100) return '#FFEB3B'; // Yellow for low-medium
-        return '#FFC107'; // Amber for low altitude
+        // Truly infinite color system using HSL color space
+        // Cycle through hues every 500 altitude units, with increasing saturation and varying lightness
+        const hue = Math.floor((altitude / 500) * 60) % 360; // Complete color wheel every 6000 altitude
+        const saturation = Math.min(100, 50 + (altitude / 100)); // Increases saturation with altitude
+        const lightness = 45 + Math.sin(altitude / 300) * 15; // Oscillating lightness for variety
+        
+        return `hsl(${hue}, ${Math.floor(saturation)}%, ${Math.floor(lightness)}%)`;
     }
     
     spawnCollectible() {
